@@ -1,0 +1,15 @@
+<launch>
+
+	<node name="mocap_publisher_node" pkg="control1" type="mocap_dummy.py" />
+
+	<node name="error_calculation" pkg="control1" type="error_calc.py" />
+
+	<node name="pid_controller_node" pkg="control1" type="pid.py" />
+
+	<node name="serial_transmitter_node" pkg="control1" type="serial_transmitter.py" />
+
+        <node name="PurePursuit_node" pkg="control1" type="PurePursuite.py" />
+        
+        <node name="Waypoint_publisher" pkg="control1" type="Waypoints.py" />
+
+</launch>
