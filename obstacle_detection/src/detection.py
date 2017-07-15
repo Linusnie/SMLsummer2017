@@ -6,7 +6,7 @@ import sensor_msgs.point_cloud2 as pc2
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
-from sklearn.cluster import KMeans
+# from sklearn.cluster import KMeans
 import time
 # import os
 # import threading
@@ -14,6 +14,16 @@ import time
 
 # Define the publisher
 result_pub = rospy.Publisher("/detect_result", Cmd, queue_size=3)
+
+# Initialize obstacle detection parameters
+step = 3  # sample the cloud points every step length in both height and width direction
+depth_max = 1.8  # only consider points within 4 meters from the camera, depth_max = velocity_max * processing_time
+height_min = 0.05  # only consider points higher than 0.05 meters
+width_min = -0.62
+width_max = 0.5
+interval = 5  # sampling interval for visualizing a subset of clustered cloud points in 3D
+k = 4  # number of clusters for KMeans, maximum 8 for visualization convenience
+point_count_min = 6000  # minimum number of points to be regarded as a valid obstacle
 flag = "True"
 # # Initialize the figures
 # fig = plt.figure()
@@ -64,11 +74,11 @@ def normalized(a, axis=-1, order=2):
 
 
 # Detect if there is obstacle ahead
-def detect_3d(cloud, stop_sign, depth_max, height_min, width_min, width_max):
+def detect_3d(cloud, stop_sign):
     # Read the cloud points into list
     points_array = np.zeros([cloud.height * cloud.width, 4])
     count = 0
-    for p in pc2.read_points(cloud, field_names=("x", "y", "z", "rgb"), skip_nans=True):
+    for p in pc2.read_points(cloud, field_names=("x", "y", "z", "rgb"), skip_nans=True, sample_step=step):
         # "x: %f\ny: %f\nz: %f\nrgb: %f" % (p[0], p[1], p[2], p[3])
         # coordinates system relative to /zed_current_frame, basing on the left camera
         # x: depth, y: horizontal distance to the opposite of right camera, z: height
@@ -100,14 +110,6 @@ def cluster_3d(data, k, point_num):
 
 # Perform detection on point cloud
 def detect_obstacle(cloud):
-    # Initialize obstacle detection parameters
-    depth_max = 1.8  # only consider points within 4 meters from the camera, depth_max = velocity_max * processing_time
-    height_min = 0.05  # only consider points higher than 0.05 meters
-    width_min = -0.62
-    width_max = 0.5
-    interval = 100  # sampling interval for visualizing a subset of clustered cloud points in 3D
-    k = 4  # number of clusters for KMeans, maximum 8 for visualization convenience
-    point_count_min = 6000  # minimum number of points to be regarded as a valid obstacle
     # Initialize default output commands
     detect_result = Cmd()
     global flag
@@ -120,7 +122,7 @@ def detect_obstacle(cloud):
     print "Current time: ", time.time()
 
     # Detect if there is obstacle
-    point_count, point_ndarray = detect_3d(cloud, flag, depth_max, height_min, width_min, width_max)
+    point_count, point_ndarray = detect_3d(cloud, flag)
 
     # Reset the flag
     if point_count < point_count_min:
@@ -133,32 +135,32 @@ def detect_obstacle(cloud):
             print "Obstacle detected!"
         else:
             print "Obstacle detected!"
-
-            a = time.time()
-            # Clustering
-            centers, labels = cluster_3d(point_ndarray, k, point_count)
-            b = time.time()
-            print "Clustering time: ", b - a
-
-            # Print out the clustering result
-            print "Centroids: [x:depth, y:width, z:height, rgb:rgb]\n", centers
-
-            ####################### Path planning ########################
-
-            # Concatenate coordinates with labels to visualize clustering result
-            point_clustered_ndarray = np.concatenate((point_ndarray[:, :3], labels.reshape([point_count, 1])),
-                                                     axis=1)
-            np.random.shuffle(point_clustered_ndarray)
-
-            # # Plot the clusters in 3D
-            # visual_3d(point_clustered_ndarray[0::interval, ...])
-            # # plt.show(block=True)
-
-            # Save the clusters locally
-            # cwd = os.getcwd()
-            cwd = "/home/xiao/ros/catkin_ws/src/obstacle_detection/src"
-            np.savetxt(cwd + '/clustered_cloud_points.txt', point_clustered_ndarray[0::interval, ...])  # saved under ~/
-            print "Successively saved point_clustered_ndarray"
+    a = time.time()
+            # a = time.time()
+            # # Clustering
+            # centers, labels = cluster_3d(point_ndarray, k, point_count)
+            # b = time.time()
+            # print "Clustering time: ", b - a
+            #
+            # # Print out the clustering result
+            # print "Centroids: [x:depth, y:width, z:height, rgb:rgb]\n", centers
+            #
+            # ####################### Path planning ########################
+            #
+            # # Concatenate coordinates with labels to visualize clustering result
+            # point_clustered_ndarray = np.concatenate((point_ndarray[:, :3], labels.reshape([point_count, 1])),
+            #                                          axis=1)
+            # np.random.shuffle(point_clustered_ndarray)
+            #
+            # # # Plot the clusters in 3D
+            # # visual_3d(point_clustered_ndarray[0::interval, ...])
+            # # # plt.show(block=True)
+            #
+            # # Save the clusters locally
+            # # cwd = os.getcwd()
+            # cwd = "/home/xiao/ros/catkin_ws/src/obstacle_detection/src"
+            # np.savetxt(cwd + '/clustered_cloud_points.txt', point_clustered_ndarray[0::interval, ...])  # saved under ~/
+            # print "Successively saved point_clustered_ndarray"
 
     # Publish result
     # flag == "False" --> No obstacle detected
@@ -168,6 +170,8 @@ def detect_obstacle(cloud):
     detect_result.distance = distance
     detect_result.turn_angle = angle
     result_pub.publish(detect_result)
+    b = time.time()
+    print "Time for publish the result: ", b-a
 
 
 def image_io_node():
