@@ -2,7 +2,8 @@
 import rospy
 from sensor_msgs.msg import PointCloud2
 from obstacle_detection.msg import Cmd
-import sensor_msgs.point_cloud2 as pc2
+# import sensor_msgs.point_cloud2 as pc2
+import readpoint as rpt
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
@@ -79,7 +80,7 @@ def detect_3d(cloud, stop_sign):
     # Read the cloud points into list
     points_array = np.zeros([cloud.height * cloud.width, 4])
     count = 0
-    for p in pc2.read_points(cloud, field_names=("x", "y", "z", "rgb"), skip_nans=True, sample_step=step):
+    for p in rpt.read_points(cloud, field_names=("x", "y", "z", "rgb"), skip_nans=True, sample_step=step):
         # "x: %f\ny: %f\nz: %f\nrgb: %f" % (p[0], p[1], p[2], p[3])
         # coordinates system relative to /zed_current_frame, basing on the left camera
         # x: depth, y: horizontal distance to the opposite of right camera, z: height
