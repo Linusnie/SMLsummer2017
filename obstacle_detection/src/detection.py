@@ -6,7 +6,8 @@ import sensor_msgs.point_cloud2 as pc2
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
-# from sklearn.cluster import KMeans
+import cv2
+from sklearn.cluster import KMeans
 import time
 # import os
 # import threading
@@ -16,14 +17,14 @@ import time
 result_pub = rospy.Publisher("/detect_result", Cmd, queue_size=3)
 
 # Initialize obstacle detection parameters
-step = 3  # sample the cloud points every step length in both height and width direction
+step = 5  # sample the cloud points every step length in both height and width direction
 depth_max = 1.8  # only consider points within 4 meters from the camera, depth_max = velocity_max * processing_time
 height_min = 0.05  # only consider points higher than 0.05 meters
 width_min = -0.62
 width_max = 0.5
 interval = 5  # sampling interval for visualizing a subset of clustered cloud points in 3D
 k = 4  # number of clusters for KMeans, maximum 8 for visualization convenience
-point_count_min = 6000  # minimum number of points to be regarded as a valid obstacle
+point_count_min = 500/step**2  # minimum number of points to be regarded as a valid obstacle
 flag = "True"
 # # Initialize the figures
 # fig = plt.figure()
@@ -92,20 +93,27 @@ def detect_3d(cloud, stop_sign):
 
 
 # Cluster the point cloud
-def cluster_3d(data, k, point_num):
+def cluster_3d(data, point_num):
     # Perform clustering on point cloud
     # print "Performing kmeans clustering..."
 
     # Normalize the last column, i.e. rgb, of the point cloud data ndarray
     point_ndarray_norm = np.concatenate((data[:, :3],
                                          (normalized(data[:, 3], 0)).reshape([point_num, 1])), axis=1)
-    print "shape of normalized points: ", point_ndarray_norm.shape
 
-    obstacles = KMeans(n_clusters=k, n_jobs=1).fit(point_ndarray_norm)
-    centers = obstacles.cluster_centers_
-    labels = obstacles.labels_
+    # # Clustering using sklearn.KMeans
+    # obstacles = KMeans(n_clusters=k, n_jobs=1).fit(point_ndarray_norm)
+    # labels = obstacles.labels_.reshape([point_num, 1])
+    # centers = obstacles.cluster_centers_
+    # compactness = None
 
-    return centers, labels
+    # Clustering using cv2.kmeans
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 0.05)
+    attempts = 10
+    flag_kmeans = cv2.KMEANS_PP_CENTERS
+    compactness, labels, centers = cv2.kmeans(np.float32(point_ndarray_norm), k, None, criteria, attempts, flag_kmeans)
+
+    return centers, labels, compactness  # both np.ndarray
 
 
 # Perform detection on point cloud
@@ -123,6 +131,7 @@ def detect_obstacle(cloud):
 
     # Detect if there is obstacle
     point_count, point_ndarray = detect_3d(cloud, flag)
+    print "Number of points detected: ", point_count
 
     # Reset the flag
     if point_count < point_count_min:
@@ -135,20 +144,20 @@ def detect_obstacle(cloud):
             print "Obstacle detected!"
         else:
             print "Obstacle detected!"
-    a = time.time()
-            # a = time.time()
-            # # Clustering
-            # centers, labels = cluster_3d(point_ndarray, k, point_count)
-            # b = time.time()
-            # print "Clustering time: ", b - a
-            #
-            # # Print out the clustering result
-            # print "Centroids: [x:depth, y:width, z:height, rgb:rgb]\n", centers
-            #
-            # ####################### Path planning ########################
-            #
+            a = time.time()
+            # Clustering
+            centers, labels, compactness = cluster_3d(point_ndarray, point_count)
+            b = time.time()
+            print "Clustering time: ", b - a
+
+            # Print out the clustering result
+            print "Cluster compactness: ", compactness
+            print "Centroids: [x:depth, y:width, z:height, rgb:rgb]\n", centers
+
+            ####################### Path planning ########################
+
             # # Concatenate coordinates with labels to visualize clustering result
-            # point_clustered_ndarray = np.concatenate((point_ndarray[:, :3], labels.reshape([point_count, 1])),
+            # point_clustered_ndarray = np.concatenate((point_ndarray[:, :3], labels),
             #                                          axis=1)
             # np.random.shuffle(point_clustered_ndarray)
             #
@@ -170,8 +179,6 @@ def detect_obstacle(cloud):
     detect_result.distance = distance
     detect_result.turn_angle = angle
     result_pub.publish(detect_result)
-    b = time.time()
-    print "Time for publish the result: ", b-a
 
 
 def image_io_node():
